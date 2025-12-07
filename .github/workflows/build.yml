@@ -59,6 +59,28 @@ jobs:
           GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o ech-workers${{ matrix.exe_ext }} ech-workers.go
         shell: bash
 
+      - name: Set up Python
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PyInstaller and dependencies
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller PyQt5 pystray Pillow
+
+      - name: Build Python executable
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          if [ "${{ matrix.goos }}" == "windows" ]; then
+            pyinstaller --onefile --windowed --name ECHWorkersGUI gui.py
+          else
+            pyinstaller --onefile --windowed --name ECHWorkersGUI gui.py
+          fi
+        shell: bash
+
       - name: Prepare release files
         if: startsWith(github.ref, 'refs/tags/')
         run: |
@@ -67,22 +89,16 @@ jobs:
           # 复制 Go 可执行文件
           cp ech-workers${{ matrix.exe_ext }} release/
           
-          # 复制 Python 文件
-          cp gui.py release/
-          cp requirements.txt release/
-          
-          # 创建运行脚本
+          # 复制 Python 打包后的可执行文件
           if [ "${{ matrix.goos }}" == "windows" ]; then
-            echo "@echo off" > release/run.bat
-            echo "python gui.py" >> release/run.bat
-            echo "if errorlevel 1 (" >> release/run.bat
-            echo "  echo Please install PyQt5: pip install PyQt5" >> release/run.bat
-            echo "  pause" >> release/run.bat
-            echo ")" >> release/run.bat
+            if [ -f "dist/ECHWorkersGUI.exe" ]; then
+              cp dist/ECHWorkersGUI.exe release/
+            fi
           else
-            echo "#!/bin/bash" > release/run.sh
-            echo "python3 gui.py" >> release/run.sh
-            chmod +x release/run.sh
+            if [ -f "dist/ECHWorkersGUI" ]; then
+              cp dist/ECHWorkersGUI release/
+              chmod +x release/ECHWorkersGUI
+            fi
           fi
           
           # 创建 README
@@ -91,20 +107,25 @@ jobs:
             echo ""
             echo "Files:"
             echo "- ech-workers(.exe): Go compiled core proxy program"
-            echo "- gui.py: Python GUI client"
-            echo "- requirements.txt: Python dependencies"
-            echo "- run.sh / run.bat: Launch script"
+            if [ "${{ matrix.goos }}" == "windows" ]; then
+              echo "- ECHWorkersGUI.exe: Python GUI client (standalone executable)"
+            else
+              echo "- ECHWorkersGUI: Python GUI client (standalone executable)"
+            fi
             echo ""
             echo "Usage:"
-            echo "1. Install Python 3.6+ (if not already installed)"
-            echo "2. Install dependencies: pip install PyQt5"
-            echo "3. Run: python gui.py"
-            echo "   Or use launch script: ./run.sh (Mac) or run.bat (Windows)"
+            if [ "${{ matrix.goos }}" == "windows" ]; then
+              echo "1. Double-click ECHWorkersGUI.exe to launch the GUI"
+              echo "2. Or run ech-workers.exe from command line"
+            else
+              echo "1. Run ./ECHWorkersGUI to launch the GUI"
+              echo "2. Or run ./ech-workers from command line"
+            fi
             echo ""
             echo "System Requirements:"
             echo "- Windows: Windows 10+"
             echo "- macOS: macOS 10.13+"
-            echo "- Python: 3.6+"
+            echo "- No Python installation required (standalone executables)"
           } > release/README.txt
         shell: bash
 
